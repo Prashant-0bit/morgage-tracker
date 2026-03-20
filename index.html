@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flexible Mortgage Tracker</title>
+    <style>
+        :root {
+            --primary: #1e293b;
+            --accent: #10b981;
+            --danger: #ef4444;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: #334155;
+        }
+        .wrapper { max-width: 1100px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 25px; }
+        .card {
+            background: var(--card);
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        h2 { margin-top: 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
+        input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; border-top: 5px solid var(--primary); }
+        .stat-card.monthly { border-top-color: var(--accent); }
+        .stat-card.interest { border-top-color: var(--danger); }
+        
+        .stat-val { display: block; font-size: 1.6rem; font-weight: 800; margin-top: 5px; color: var(--primary); }
+        .stat-label { font-size: 0.75rem; font-weight: bold; text-transform: uppercase; color: #64748b; }
+
+        .progress-bar { height: 35px; background: #e2e8f0; border-radius: 10px; overflow: hidden; display: flex; margin: 20px 0; }
+        #bar-p { background: var(--accent); display: flex; align-items: center; justify-content: center; color: white; font-size: 0.7rem; font-weight: bold; }
+        #bar-i { background: var(--danger); opacity: 0.8; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.7rem; font-weight: bold; }
+
+        .btn-download {
+            background: var(--primary); color: white; padding: 14px; border-radius: 8px; border: none;
+            cursor: pointer; font-weight: 600; width: 100%; margin-top: 10px;
+        }
+        
+        .table-wrapper { max-height: 400px; overflow-y: auto; border-radius: 12px; border: 1px solid #e2e8f0; background: white; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { background: #f8fafc; position: sticky; top: 0; padding: 15px; text-align: left; border-bottom: 2px solid #e2e8f0; z-index: 10; }
+        td { padding: 10px 15px; border-bottom: 1px solid #f1f5f9; }
+        .extra-row { background-color: #f0fdf4; } /* Highlights rows where extra payment is active */
+        
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <div class="grid">
+        <div class="card">
+            <h2>Loan Setup</h2>
+            <div class="input-group">
+                <label>Principal Amount (€)</label>
+                <input type="number" id="p" value="250000" oninput="update()">
+            </div>
+            <div class="input-group">
+                <label>Annual Interest Rate (%)</label>
+                <input type="number" id="i" value="4.5" step="0.1" oninput="update()">
+            </div>
+            <div class="input-group">
+                <label>Loan Term (Years)</label>
+                <input type="number" id="y" value="25" oninput="update()">
+            </div>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <div class="input-group">
+                <label>Extra Monthly Payment (€)</label>
+                <input type="number" id="e" value="200" oninput="update()">
+            </div>
+            <div class="input-group">
+                <label>Start Extra at Month # (e.g. 24)</label>
+                <input type="number" id="startExtraMonth" value="12" min="1" oninput="update()">
+            </div>
+            <div class="input-group">
+                <label>Loan Start Date</label>
+                <input type="month" id="startDate" oninput="update()">
+            </div>
+            <button class="btn-download" onclick="downloadCSV()">Export Schedule (CSV)</button>
+        </div>
+
+        <div>
+            <div class="stats-grid">
+                <div class="stat-card monthly">
+                    <span class="stat-label">Current Monthly Pay</span>
+                    <span id="outMonthly" class="stat-val">€0</span>
+                </div>
+                <div class="stat-card total">
+                    <span class="stat-label">Total Amount Paid</span>
+                    <span id="outTotalCost" class="stat-val">€0</span>
+                </div>
+                <div class="stat-card interest">
+                    <span class="stat-label">Total Interest</span>
+                    <span id="outTotalInterest" class="stat-val">€0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Payoff Date</span>
+                    <span id="outDate" class="stat-val">---</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Lifetime Cost Ratio</h2>
+                <div class="progress-bar">
+                    <div id="bar-p">Principal</div>
+                    <div id="bar-i">Interest</div>
+                </div>
+
+                <h2>Monthly Tracking Table</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Date</th>
+                                <th>Interest</th>
+                                <th>Principal</th>
+                                <th>Extra Paid</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('startDate').value = new Date().toISOString().slice(0, 7);
+
+function update() {
+    const P = parseFloat(document.getElementById('p').value) || 0;
+    const annualRate = parseFloat(document.getElementById('i').value) || 0;
+    const years = parseInt(document.getElementById('y').value) || 0;
+    const extra = parseFloat(document.getElementById('e').value) || 0;
+    const startExtraAt = parseInt(document.getElementById('startExtraMonth').value) || 1;
+    const startVal = document.getElementById('startDate').value;
+
+    const r = (annualRate / 100) / 12;
+    const n = years * 12;
+    const M = r > 0 ? P * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1) : P / n;
+    
+    const standardTotalInterest = (M * n) - P;
+
+    let balance = P;
+    let totalInterest = 0;
+    let monthsElapsed = 0;
+    let html = '';
+    let currentDate = new Date(startVal);
+
+    while (balance > 0 && monthsElapsed < 600) {
+        monthsElapsed++;
+        let intPayment = balance * r;
+        let princPayment = (M - intPayment);
+        
+        // Logical check: Is it time to start extra payments?
+        let currentExtra = (monthsElapsed >= startExtraAt) ? extra : 0;
+        
+        let totalReduction = princPayment + currentExtra;
+
+        if (totalReduction > balance) totalReduction = balance;
+        
+        balance -= totalReduction;
+        totalInterest += intPayment;
+        currentDate.setMonth(currentDate.getMonth() + 1);
+
+        const isExtraMonth = currentExtra > 0 ? 'class="extra-row"' : '';
+
+        html += `<tr ${isExtraMonth}>
+            <td>${monthsElapsed}</td>
+            <td>${currentDate.toLocaleDateString('en-GB', {month:'short', year:'numeric'})}</td>
+            <td>€${intPayment.toLocaleString('de-DE', {minimumFractionDigits:2})}</td>
+            <td>€${princPayment.toLocaleString('de-DE', {minimumFractionDigits:2})}</td>
+            <td>€${currentExtra.toLocaleString('de-DE', {minimumFractionDigits:2})}</td>
+            <td>€${Math.max(0, balance).toLocaleString('de-DE', {minimumFractionDigits:2})}</td>
+        </tr>`;
+    }
+
+    const totalPaid = P + totalInterest;
+
+    // Update Dashboard
+    document.getElementById('outMonthly').innerText = `€${(M + extra).toLocaleString('de-DE', {minimumFractionDigits:2})}`;
+    document.getElementById('outTotalCost').innerText = `€${totalPaid.toLocaleString('de-DE', {maximumFractionDigits:0})}`;
+    document.getElementById('outTotalInterest').innerText = `€${totalInterest.toLocaleString('de-DE', {maximumFractionDigits:0})}`;
+    document.getElementById('outDate').innerText = currentDate.toLocaleDateString('en-GB', {month:'short', year:'numeric'});
+    document.getElementById('scheduleBody').innerHTML = html;
+
+    // Progress Bar
+    document.getElementById('bar-p').style.width = (P / totalPaid * 100) + "%";
+    document.getElementById('bar-i').style.width = (totalInterest / totalPaid * 100) + "%";
+}
+
+function downloadCSV() {
+    let csv = "Month,Date,Interest,Principal,Extra,Balance\n";
+    const rows = document.querySelectorAll("#scheduleBody tr");
+    rows.forEach(row => {
+        const cols = row.querySelectorAll("td");
+        let rowData = Array.from(cols).map(c => c.innerText.replace('€', '').replace(/\./g, '').replace(',', '.')).join(",");
+        csv += rowData + "\n";
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'mortgage_tracking_report.csv');
+    a.click();
+}
+
+update();
+</script>
+</body>
+</html>
